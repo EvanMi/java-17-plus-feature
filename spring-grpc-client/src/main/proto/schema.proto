@@ -1,0 +1,15 @@
+syntax="proto3";
+option java_package = "com.yumi.grpc.client.grpc";
+option java_multiple_files = true;
+
+service Greetings {
+  rpc hello(GreetingsRequest) returns (GreetingsResponse);
+}
+
+message GreetingsRequest {
+  string name = 1;
+}
+
+message GreetingsResponse {
+  string result = 1;
+}

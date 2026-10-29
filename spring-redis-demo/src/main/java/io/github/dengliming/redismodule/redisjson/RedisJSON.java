@@ -1,0 +1,508 @@
+/*
+ * Copyright 2021-2024 dengliming.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.github.dengliming.redismodule.redisjson;
+
+import io.github.dengliming.redismodule.common.AbstractRedisModule;
+import io.github.dengliming.redismodule.common.util.RAssert;
+import io.github.dengliming.redismodule.redisjson.args.GetArgs;
+import io.github.dengliming.redismodule.redisjson.args.SetArgs;
+import io.github.dengliming.redismodule.redisjson.codec.JsonCodec;
+import io.github.dengliming.redismodule.redisjson.codec.JsonCodecs;
+import org.redisson.api.RFuture;
+import org.redisson.client.codec.Codec;
+import org.redisson.client.codec.StringCodec;
+import org.redisson.command.CommandAsyncExecutor;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_ARRAPPEND;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_ARRINDEX;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_ARRINSERT;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_ARRLEN;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_ARRPOP;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_ARRTRIM;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_DEL;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_GET;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_MGET;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_NUMINCRBY;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_NUMMULTBY;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_OBJKEYS;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_OBJLEN;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_SET;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_STRAPPEND;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_STRLEN;
+import static io.github.dengliming.redismodule.redisjson.protocol.RedisCommands.JSON_TYPE;
+
+public class RedisJSON extends AbstractRedisModule {
+
+    private static final Map<String, Class> CLASS_TYPE_MAPPING;
+
+    static {
+        CLASS_TYPE_MAPPING = new HashMap<>();
+        // JSON null has no Java class; the key is kept so the type name is recognised (see getTypeAsync).
+        CLASS_TYPE_MAPPING.put("null", Void.class);
+        CLASS_TYPE_MAPPING.put("boolean", boolean.class);
+        CLASS_TYPE_MAPPING.put("integer", int.class);
+        CLASS_TYPE_MAPPING.put("number", float.class);
+        CLASS_TYPE_MAPPING.put("string", String.class);
+        CLASS_TYPE_MAPPING.put("object", Object.class);
+        CLASS_TYPE_MAPPING.put("array", List.class);
+    }
+
+    private final JsonCodec jsonCodec;
+
+    public RedisJSON(CommandAsyncExecutor commandExecutor) {
+        this(commandExecutor, JsonCodecs.defaultCodec());
+    }
+
+    public RedisJSON(CommandAsyncExecutor commandExecutor, JsonCodec jsonCodec) {
+        super(commandExecutor);
+        this.jsonCodec = jsonCodec;
+    }
+
+    public RedisJSON(CommandAsyncExecutor commandExecutor, Codec codec) {
+        this(commandExecutor, codec, JsonCodecs.defaultCodec());
+    }
+
+    /**
+     * @param codec     Redisson codec for the command layer
+     * @param jsonCodec converts between Java objects and the stored JSON documents
+     */
+    public RedisJSON(CommandAsyncExecutor commandExecutor, Codec codec, JsonCodec jsonCodec) {
+        super(commandExecutor, codec);
+        this.jsonCodec = jsonCodec;
+    }
+
+    public JsonCodec getJsonCodec() {
+        return jsonCodec;
+    }
+
+    /**
+     * Delete a value.
+     * <p>
+     * JSON.DEL <key> [path]
+     *
+     * @param key
+     * @param path
+     * @return the number of paths deleted (0 or 1).
+     */
+    public long del(String key, String path) {
+        return get(delAsync(key, path));
+    }
+
+    public RFuture<Long> delAsync(String key, String path) {
+        RAssert.notEmpty(key, "key must not be empty");
+
+        if (path == null) {
+            return write(key, StringCodec.INSTANCE, JSON_DEL, key);
+        }
+        return write(key, StringCodec.INSTANCE, JSON_DEL, key, path);
+    }
+
+    /**
+     * Sets the JSON value at path in key.
+     * <p>
+     * JSON.SET <key> <path> <json>
+     * [NX | XX]
+     *
+     * @param key
+     * @param setArgs
+     * @return Simple String OK if executed correctly.
+     */
+    public String set(String key, SetArgs setArgs) {
+        return get(setAsync(key, setArgs));
+    }
+
+    public RFuture<String> setAsync(String key, SetArgs setArgs) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(setArgs, "setArgs must not be null");
+
+        return write(key, StringCodec.INSTANCE, JSON_SET, setArgs.build(key).toArray());
+    }
+
+    /**
+     * Return the value at path in JSON serialized form.
+     * <p>
+     * JSON.GET <key>
+     * [INDENT indentation-string]
+     * [NEWLINE line-break-string]
+     * [SPACE space-string]
+     * [NOESCAPE]
+     * [path ...]
+     *
+     * @param key
+     * @param clazz
+     * @param getArgs
+     * @param <T>
+     * @return
+     */
+    public <T> T get(String key, Class<T> clazz, GetArgs getArgs) {
+        return get(getAsync(key, clazz, getArgs));
+    }
+
+    public <T> RFuture<T> getAsync(String key, Class<T> clazz, GetArgs getArgs) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(clazz, "clazz must not be null");
+        RAssert.notNull(getArgs, "getArgs must not be null");
+
+        RFuture<String> getFuture = read(key, StringCodec.INSTANCE, JSON_GET, getArgs.build(key).toArray());
+        return transformRPromiseResult(getFuture, clazz);
+    }
+
+    /**
+     * Returns the values at path from multiple key s. Non-existing keys and non-existing paths are reported as null.
+     */
+    public <T> List<T> mget(String path, Class<T> clazz, String... keys) {
+        return get(mgetAsync(path, clazz, keys));
+    }
+
+    public <T> RFuture<List<T>> mgetAsync(String path, Class<T> clazz, String... keys) {
+        RAssert.notEmpty(keys, "keys must not be empty");
+        RAssert.notEmpty(path, "path must not be empty");
+        RAssert.notNull(clazz, "clazz must not be null");
+
+        List<String> args = new ArrayList<>(keys.length + 1);
+        for (String key : keys) {
+            args.add(key);
+        }
+        args.add(path);
+        RFuture<List<String>> getFuture = read(keys[0], StringCodec.INSTANCE, JSON_MGET, args.toArray());
+        return transform(getFuture, res -> res.stream().map(it -> jsonCodec.fromJson(it, clazz)).collect(Collectors.toList()));
+    }
+
+    /**
+     * Report the type of JSON value at path.
+     * <p>
+     * JSON.TYPE <key> [path]
+     *
+     * @param key
+     * @param path
+     * @return the Java type mapped from the JSON type name; {@link Void} for a JSON null
+     */
+    public Class getType(String key, String path) {
+        return get(getTypeAsync(key, path));
+    }
+
+    public RFuture<Class> getTypeAsync(String key, String path) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(path, "path must not be null");
+
+        RFuture<List<String>> getFuture = read(key, StringCodec.INSTANCE, JSON_TYPE, key, path);
+        return transform(getFuture, res -> {
+            if (null == res || res.isEmpty() || !CLASS_TYPE_MAPPING.containsKey(res.get(0))) {
+                throw new RuntimeException("Unknown type " + res);
+            }
+            return CLASS_TYPE_MAPPING.get(res.get(0));
+        });
+    }
+
+    /**
+     * Increments the number value stored at path by number.
+     * <p>
+     * JSON.NUMINCRBY <key> <path> <number>
+     *
+     * @param key
+     * @param path
+     * @param num
+     * @return Bulk String, specifically the stringified new value.
+     */
+    public String incrBy(String key, String path, long num) {
+        return get(incrByAsync(key, path, num));
+    }
+
+    public RFuture<String> incrByAsync(String key, String path, long num) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(path, "path must not be null");
+
+        return write(key, StringCodec.INSTANCE, JSON_NUMINCRBY, key, path, num);
+    }
+
+    /**
+     * Multiplies the number value stored at path by number.
+     * <p>
+     * JSON.NUMMULTBY <key> <path> <number>
+     *
+     * @param key
+     * @param path
+     * @param num
+     * @return Bulk String, specifically the stringified new value.
+     */
+    public String multBy(String key, String path, long num) {
+        return get(multByAsync(key, path, num));
+    }
+
+    public RFuture<String> multByAsync(String key, String path, long num) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(path, "path must not be null");
+
+        return write(key, StringCodec.INSTANCE, JSON_NUMMULTBY, key, path, num);
+    }
+
+    /**
+     * Append the json-string value(s) the string at path.
+     * <p>
+     * JSON.STRAPPEND <key> [path] <json-string>
+     *
+     * @param key
+     * @param path
+     * @param object
+     * @return
+     */
+    public long strAppend(String key, String path, Object object) {
+        return get(strAppendAsync(key, path, object));
+    }
+
+    public RFuture<Long> strAppendAsync(String key, String path, Object object) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(path, "path must not be null");
+        RAssert.notNull(object, "object must not be null");
+
+        return write(key, StringCodec.INSTANCE, JSON_STRAPPEND, key, path, jsonCodec.toJson(object));
+    }
+
+    /**
+     * Return the length of the JSON String at path in key.
+     * <p>
+     * JSON.STRLEN <key> [path]
+     *
+     * @param key
+     * @param path
+     * @return
+     */
+    public long strLen(String key, String path) {
+        return get(strLenAsync(key, path));
+    }
+
+    public RFuture<Long> strLenAsync(String key, String path) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(path, "path must not be null");
+        RFuture<List<Long>> getFuture = read(key, StringCodec.INSTANCE, JSON_STRLEN, key, path);
+        return transform(getFuture, res -> {
+            if (null == res || res.isEmpty()) {
+                throw new RuntimeException("Illegal response: " + res);
+            }
+            return res.get(0);
+        });
+    }
+
+    /**
+     * Append the json value(s) into the array at path after the last element in it.
+     * <p>
+     * JSON.ARRAPPEND <key> <path> <json> [json ...]
+     *
+     * @param key
+     * @param path
+     * @return
+     */
+    public long arrAppend(String key, String path, Object... objects) {
+        return get(arrAppendAsync(key, path, objects));
+    }
+
+    public RFuture<Long> arrAppendAsync(String key, String path, Object... objects) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(path, "path must not be null");
+        RAssert.notEmpty(objects, "objects must not be empty");
+
+        List<Object> args = new ArrayList<>();
+        args.add(key);
+        args.add(path);
+        for (Object object : objects) {
+            args.add(jsonCodec.toJson(object));
+        }
+        return write(key, StringCodec.INSTANCE, JSON_ARRAPPEND, args.toArray());
+    }
+
+    /**
+     * Insert the json value(s) into the array at path before the index (shifts to the right).
+     * <p>
+     * JSON.ARRINSERT <key> <path> <index> <json> [json ...]
+     *
+     * @param key
+     * @param path
+     * @return
+     */
+    public long arrInsert(String key, String path, long index, Object... objects) {
+        return get(arrInsertAsync(key, path, index, objects));
+    }
+
+    public RFuture<Long> arrInsertAsync(String key, String path, long index, Object... objects) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(path, "path must not be null");
+        RAssert.notEmpty(objects, "objects must not be empty");
+
+        List<Object> args = new ArrayList<>();
+        args.add(key);
+        args.add(path);
+        args.add(index);
+        for (Object object : objects) {
+            args.add(jsonCodec.toJson(object));
+        }
+        return write(key, StringCodec.INSTANCE, JSON_ARRINSERT, args.toArray());
+    }
+
+    /**
+     * Return the length of the JSON Array at path in key.
+     * <p>
+     * JSON.ARRLEN <key> [path]
+     *
+     * @param key
+     * @param path
+     * @return
+     */
+    public long arrLen(String key, String path) {
+        return get(arrLenAsync(key, path));
+    }
+
+    public RFuture<Long> arrLenAsync(String key, String path) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(path, "path must not be null");
+        RFuture<List<Long>> getFuture = read(key, StringCodec.INSTANCE, JSON_ARRLEN, key, path);
+        return transform(getFuture, res -> {
+            if (null == res || res.isEmpty()) {
+                throw new RuntimeException("Illegal response: " + res);
+            }
+            return res.get(0);
+        });
+    }
+
+    /**
+     * Trim an array so that it contains only the specified inclusive range of elements.
+     * <p>
+     * JSON.ARRTRIM <key> <path> <start> <stop>
+     *
+     * @param key
+     * @param path
+     * @param start
+     * @param stop
+     * @return
+     */
+    public long arrTrim(String key, String path, long start, long stop) {
+        return get(arrTrimAsync(key, path, start, stop));
+    }
+
+    public RFuture<Long> arrTrimAsync(String key, String path, long start, long stop) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(path, "path must not be null");
+
+        return read(key, StringCodec.INSTANCE, JSON_ARRTRIM, key, path, start, stop);
+    }
+
+    /**
+     * Finds the index of the first occurrence of a scalar JSON value in the array at the given path.
+     *
+     * JSON.ARRINDEX <key> <path> <json-scalar> [start [stop]]
+     *
+     * @param key
+     * @param path
+     * @param scalar
+     * @param start
+     * @param stop
+     * @return
+     */
+    public long arrIndex(String key, String path, Object scalar, long start, long stop) {
+        return get(arrIndexAsync(key, path, scalar, start, stop));
+    }
+
+    public RFuture<Long> arrIndexAsync(String key, String path, Object scalar, long start, long stop) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(path, "path must not be null");
+        RAssert.notNull(scalar, "scalar must not be null");
+
+        return read(key, StringCodec.INSTANCE, JSON_ARRINDEX, key, path,
+                jsonCodec.toJson(scalar), start, stop);
+    }
+
+    /**
+     * Remove and return element from the index in the array.
+     *
+     * JSON.ARRPOP <key> [path [index]]
+     *
+     * @param key
+     * @param path
+     * @param clazz
+     * @param index
+     * @param <T>
+     * @return
+     */
+    public <T> T arrPop(String key, String path, Class<T> clazz, long index) {
+        return get(arrPopAsync(key, path, clazz, index));
+    }
+
+    public <T> RFuture<T> arrPopAsync(String key, String path, Class<T> clazz, long index) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(path, "path must not be null");
+        RAssert.notNull(clazz, "clazz must not be null");
+
+        RFuture<String> getFuture = write(key, StringCodec.INSTANCE, JSON_ARRPOP, key, path, index);
+        return transformRPromiseResult(getFuture, clazz);
+    }
+
+    private <T> RFuture<T> transformRPromiseResult(RFuture<String> getFuture, Class<T> clazz) {
+        return transform(getFuture, res -> jsonCodec.fromJson(res, clazz));
+    }
+
+    /**
+     * Report the number of keys in the JSON Object at path in key.
+     *
+     * JSON.OBJLEN <key> [path]
+     *
+     * @param key
+     * @param path
+     * @return
+     */
+    public Long objLen(String key, String path) {
+        return get(objLenAsync(key, path));
+    }
+
+    public RFuture<Long> objLenAsync(String key, String path) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(path, "path must not be null");
+
+        RFuture<List<Long>> getFuture = read(key, StringCodec.INSTANCE, JSON_OBJLEN, key, path);
+        return transform(getFuture, res -> {
+            if (null == res || res.isEmpty()) {
+                throw new RuntimeException("Illegal response: " + res);
+            }
+            return res.get(0);
+        });
+    }
+
+    /**
+     * Return the keys in the object that's referenced by path.
+     *
+     * JSON.OBJKEYS <key> [path]
+     *
+     * @param key
+     * @param path
+     * @return
+     */
+    public List<Object> objKeys(String key, String path) {
+        return get(objKeysAsync(key, path));
+    }
+
+    public RFuture<List<Object>> objKeysAsync(String key, String path) {
+        RAssert.notEmpty(key, "key must not be empty");
+        RAssert.notNull(path, "path must not be null");
+
+        return read(key, StringCodec.INSTANCE, JSON_OBJKEYS, key, path);
+    }
+
+}

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Redis TDigest 测试页面</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, Arial, sans-serif; max-width: 960px; margin: 20px auto; padding: 0 20px; background: #f5f6f8; color: #333; }
+        h1 { color: #222; border-bottom: 2px solid #4285f4; padding-bottom: 10px; }
+        .card { border: 1px solid #e0e0e0; border-radius: 10px; padding: 18px; margin-bottom: 18px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .card h3 { margin-top: 0; color: #444; font-size: 16px; }
+        .card h3 .badge { display: inline-block; background: #e8f0fe; color: #4285f4; border-radius: 4px; padding: 1px 8px; font-size: 12px; margin-left: 6px; font-weight: normal; }
+        label { display: inline-block; width: 130px; margin-right: 8px; font-size: 14px; color: #555; }
+        input { padding: 7px; margin-right: 10px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 5px; width: 180px; font-size: 14px; }
+        input:focus { outline: none; border-color: #4285f4; }
+        button { padding: 7px 16px; background: #4285f4; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; margin-right: 6px; }
+        button:hover { background: #3367d6; }
+        button.secondary { background: #f57c00; }
+        button.secondary:hover { background: #e65100; }
+        .result { margin-top: 12px; padding: 12px; border-radius: 6px; font-size: 13px; white-space: pre-wrap; word-break: break-all; display: none; }
+        .result.show { display: block; }
+        .result.loading { background: #fff8e1; color: #b28704; border: 1px solid #ffe082; }
+        .result.success { background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7; }
+        .result.error { background: #ffebee; color: #b71c1c; border: 1px solid #ef9a9a; }
+        .result .status-tag { font-weight: bold; }
+        .result table { border-collapse: collapse; margin-top: 8px; background: #fff; }
+        .result table td, .result table th { border: 1px solid #ddd; padding: 6px 12px; font-size: 13px; text-align: left; }
+        .result table th { background: #f0f0f0; }
+        .hint { margin: 10px 0 0; font-size: 12px; color: #888; }
+        .quick-add { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+        .quick-add button { background: #34a853; }
+        .quick-add button:hover { background: #2e7d32; }
+    </style>
+</head>
+<body>
+<h1>Redis TDigest 测试页面</h1>
+
+<div class="card">
+    <h3>1. 创建 TDigest <span class="badge">init</span></h3>
+    <label>名称 name</label><input id="init-name" value="myTDigest"><br>
+    <label>压缩系数 compression</label><input id="init-compression" value="100"><br>
+    <button onclick="callGet('/tdigest/init/' + v('init-name') + '/' + v('init-compression'), 'init-result')">创建</button>
+    <div class="result" id="init-result"></div>
+    <p class="hint">compression 压缩系数，推荐 100，值越大精度越高但内存占用越大。</p>
+</div>
+
+<div class="card">
+    <h3>2. 添加样本 <span class="badge">add</span></h3>
+    <label>名称 name</label><input id="add-name" value="myTDigest"><br>
+    <label>值 value</label><input id="add-value" value="100"><br>
+    <label>权重 weight</label><input id="add-weight" value="1"><br>
+    <button onclick="callGet('/tdigest/add/' + v('add-name') + '/' + v('add-value') + '/' + v('add-weight'), 'add-result')">添加单个样本</button>
+    <div class="result" id="add-result"></div>
+    <div class="quick-add">
+        <button onclick="addBatch([50,80,90,95,100,105,110,120,150,200])">批量添加演示数据</button>
+        <button onclick="addBatch([10,20,30,40,60,70,130,140,160,180])">追加更多数据</button>
+    </div>
+    <p class="hint">点击"批量添加演示数据"可快速填充一组样本，便于测试后续分位数、CDF、rank 等功能。</p>
+</div>
+
+<div class="card">
+    <h3>3. 查询最小值 / 最大值 <span class="badge">min / max</span></h3>
+    <label>名称 name</label><input id="minmax-name" value="myTDigest"><br>
+    <button onclick="callGet('/tdigest/min/' + v('minmax-name'), 'min-result')">最小值</button>
+    <button onclick="callGet('/tdigest/max/' + v('minmax-name'), 'max-result')">最大值</button>
+    <div class="result" id="min-result"></div>
+    <div class="result" id="max-result"></div>
+</div>
+
+<div class="card">
+    <h3>4. 计算分位数 <span class="badge">quantile</span></h3>
+    <label>名称 name</label><input id="quantile-name" value="myTDigest"><br>
+    <label>分位值 value</label><input id="quantile-value" value="0.95"><br>
+    <button onclick="callGet('/tdigest/quantile/' + v('quantile-name') + '/' + v('quantile-value'), 'quantile-result')">计算 P95</button>
+    <button onclick="callGet('/tdigest/quantile/' + v('quantile-name') + '/0.5', 'quantile-result')">计算 P50</button>
+    <button onclick="callGet('/tdigest/quantile/' + v('quantile-name') + '/0.99', 'quantile-result')">计算 P99</button>
+    <div class="result" id="quantile-result"></div>
+    <p class="hint">value 为分位数，范围 0~1，如 0.95 表示 P95。</p>
+</div>
+
+<div class="card">
+    <h3>5. CDF 累计分布 <span class="badge">cdf</span></h3>
+    <label>名称 name</label><input id="cdf-name" value="myTDigest"><br>
+    <label>值 value</label><input id="cdf-value" value="100"><br>
+    <button onclick="callGet('/tdigest/cdf/' + v('cdf-name') + '/' + v('cdf-value'), 'cdf-result')">计算占比</button>
+    <div class="result" id="cdf-result"></div>
+    <p class="hint">返回 ≤ value 的数据占比（0~1）。</p>
+</div>
+
+<div class="card">
+    <h3>6. 排名 RANK <span class="badge">rank / revRank</span></h3>
+    <label>名称 name</label><input id="rank-name" value="myTDigest"><br>
+    <label>值 value</label><input id="rank-value" value="100"><br>
+    <button onclick="callGet('/tdigest/rank/' + v('rank-name') + '/' + v('rank-value'), 'rank-result')">正序排名</button>
+    <button onclick="callGet('/tdigest/revRank/' + v('rank-name') + '/' + v('rank-value'), 'rank-result')">倒序排名</button>
+    <div class="result" id="rank-result"></div>
+    <p class="hint">rank 返回小于该值的样本个数（从 0 开始）；revRank 为倒序排名。</p>
+</div>
+
+<div class="card">
+    <h3>7. 按排名反查数值 <span class="badge">byRank</span></h3>
+    <label>名称 name</label><input id="byrank-name" value="myTDigest"><br>
+    <label>排名 rank</label><input id="byrank-rank" value="5"><br>
+    <button onclick="callGet('/tdigest/byRank/' + v('byrank-name') + '/' + v('byrank-rank'), 'byrank-result')">反查</button>
+    <div class="result" id="byrank-result"></div>
+    <p class="hint">根据排名（从 0 开始）反查对应的数值。</p>
+</div>
+
+<div class="card">
+    <h3>8. 合并 TDigest <span class="badge">mergeTo</span></h3>
+    <label>源名称 name1</label><input id="merge-name1" value="myTDigest"><br>
+    <label>目标名称 name2</label><input id="merge-name2" value="myTDigest2"><br>
+    <button onclick="callGet('/tdigest/mergeTo/' + v('merge-name1') + '/' + v('merge-name2'), 'merge-result')">合并</button>
+    <div class="result" id="merge-result"></div>
+    <p class="hint">将 name1 的数据合并到 name2 中。</p>
+</div>
+
+<div class="card">
+    <h3>9. 查看信息 <span class="badge">getInfo</span></h3>
+    <label>名称 name</label><input id="info-name" value="myTDigest"><br>
+    <button onclick="callGet('/tdigest/getInfo/' + v('info-name'), 'info-result')">查看信息</button>
+    <div class="result" id="info-result"></div>
+</div>
+
+<div class="card">
+    <h3>10. 重置 <span class="badge">reset</span></h3>
+    <label>名称 name</label><input id="reset-name" value="myTDigest"><br>
+    <button class="secondary" onclick="callGet('/tdigest/reset/' + v('reset-name'), 'reset-result')">重置</button>
+    <div class="result" id="reset-result"></div>
+    <p class="hint">清空该 TDigest 的所有数据。</p>
+</div>
+
+<script>
+    function v(id) { return document.getElementById(id).value; }
+
+    function addBatch(values) {
+        var name = v('add-name');
+        var el = document.getElementById('add-result');
+        var chain = Promise.resolve();
+        values.forEach(function (val) {
+            chain = chain.then(function () {
+                return fetch('/tdigest/add/' + name + '/' + val + '/1');
+            });
+        });
+        showLoading(el, '/tdigest/add/' + name + '/[...] 批量添加 ' + values.length + ' 个样本');
+        chain.then(function () {
+            showSuccess(el, { message: '已批量添加 ' + values.length + ' 个样本（value: ' + values.join(', ') + '）' });
+        }).catch(function (err) {
+            showError(el, 0, { message: '批量添加异常: ' + err.message });
+        });
+    }
+
+    function callGet(url, resultId) {
+        var el = document.getElementById(resultId);
+        showLoading(el, url);
+        fetch(url)
+            .then(function (resp) {
+                return resp.json().catch(function () {
+                    return { raw: true, status: resp.status, text: '非 JSON 响应' };
+                }).then(function (json) {
+                    return { status: resp.status, json: json };
+                });
+            })
+            .then(function (data) {
+                if (data.status === 200) {
+                    showSuccess(el, data.json);
+                } else {
+                    showError(el, data.status, data.json);
+                }
+            })
+            .catch(function (err) {
+                showError(el, 0, { message: '请求异常: ' + err.message });
+            });
+    }
+
+    function showLoading(el, url) {
+        el.className = 'result loading show';
+        el.innerHTML = '<span class="status-tag">请求中...</span> ' + escapeHtml(url);
+    }
+
+    function showSuccess(el, json) {
+        el.className = 'result success show';
+        var data = json && json.data ? json.data : json;
+        var html = '<span class="status-tag">✓ 成功</span>';
+        if (json && json.message) {
+            html += ' <b>' + escapeHtml(json.message) + '</b>';
+        }
+        html += renderData(data);
+        el.innerHTML = html;
+    }
+
+    function showError(el, status, json) {
+        el.className = 'result error show';
+        var msg = json && (json.message || json.detail) ? (json.message || json.detail) : (json && json.text ? json.text : '未知错误');
+        el.innerHTML = '<span class="status-tag">✗ 失败 (' + status + ')</span> ' + escapeHtml(String(msg));
+    }
+
+    function renderData(data) {
+        if (data === null || data === undefined) return '';
+        if (typeof data === 'object' && !Array.isArray(data)) {
+            var rows = '';
+            for (var key in data) {
+                if (data.hasOwnProperty(key)) {
+                    rows += '<tr><th>' + escapeHtml(key) + '</th><td>' + renderValue(data[key]) + '</td></tr>';
+                }
+            }
+            return '<table>' + rows + '</table>';
+        }
+        return '<div>' + renderValue(data) + '</div>';
+    }
+
+    function renderValue(val) {
+        if (Array.isArray(val)) {
+            return val.map(function (item) { return renderValue(item); }).join(', ');
+        }
+        if (typeof val === 'boolean') {
+            return '<span style="color:' + (val ? '#1b5e20' : '#b71c1c') + ';font-weight:bold">' + val + '</span>';
+        }
+        if (val !== null && typeof val === 'object') {
+            return JSON.stringify(val);
+        }
+        return escapeHtml(String(val));
+    }
+
+    function escapeHtml(str) {
+        return String(str).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/\"/g, '"');
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Redis JSON 测试页面</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, Arial, sans-serif; max-width: 960px; margin: 20px auto; padding: 0 20px; background: #f5f6f8; color: #333; }
+        h1 { color: #222; border-bottom: 2px solid #4285f4; padding-bottom: 10px; }
+        .card { border: 1px solid #e0e0e0; border-radius: 10px; padding: 18px; margin-bottom: 18px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .card h3 { margin-top: 0; color: #444; font-size: 16px; }
+        .card h3 .badge { display: inline-block; background: #e8f0fe; color: #4285f4; border-radius: 4px; padding: 1px 8px; font-size: 12px; margin-left: 6px; font-weight: normal; }
+        label { display: inline-block; width: 110px; margin-right: 8px; font-size: 14px; color: #555; }
+        input, textarea { padding: 7px; margin-right: 10px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 5px; width: 420px; font-size: 14px; font-family: inherit; }
+        textarea { width: 560px; height: 120px; resize: vertical; }
+        input:focus, textarea:focus { outline: none; border-color: #4285f4; }
+        button { padding: 7px 16px; background: #4285f4; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
+        button:hover { background: #3367d6; }
+        .result { margin-top: 12px; padding: 12px; border-radius: 6px; font-size: 13px; white-space: pre-wrap; word-break: break-all; display: none; }
+        .result.show { display: block; }
+        .result.loading { background: #fff8e1; color: #b28704; border: 1px solid #ffe082; }
+        .result.success { background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7; }
+        .result.error { background: #ffebee; color: #b71c1c; border: 1px solid #ef9a9a; }
+        .result .status-tag { font-weight: bold; }
+        .result table { border-collapse: collapse; margin-top: 8px; background: #fff; }
+        .result table td, .result table th { border: 1px solid #ddd; padding: 6px 12px; font-size: 13px; text-align: left; }
+        .result table th { background: #f0f0f0; }
+        .hint { margin: 10px 0 0; font-size: 12px; color: #888; }
+    </style>
+</head>
+<body>
+<h1>Redis JSON 测试页面</h1>
+
+<div class="card">
+    <h3>1. 设置 JSON <span class="badge">POST /json/set/{key}</span></h3>
+    <label>键 key</label><input id="set-key" value="product:1"><br>
+    <label>Product JSON</label><textarea id="set-json">{"id":1,"name":"iPhone 15","price":6999.00,"tags":["手机","5G"],"attr":{"color":"黑色","storage":"256G"}}</textarea><br>
+    <button onclick="callPost('/json/set/' + v('set-key'), v('set-json'), 'set-result')">设置</button>
+    <div class="result" id="set-result"></div>
+</div>
+
+<div class="card">
+    <h3>2. 获取完整对象 <span class="badge">GET /json/get/{key}</span></h3>
+    <label>键 key</label><input id="get-key" value="product:1"><br>
+    <button onclick="callGet('/json/get/' + v('get-key'), 'get-result')">获取</button>
+    <div class="result" id="get-result"></div>
+</div>
+
+<div class="card">
+    <h3>3. 按路径获取 <span class="badge">GET /json/get/{key}/{path}</span></h3>
+    <label>键 key</label><input id="getpath-key" value="product:1"><br>
+    <label>路径 path</label><input id="getpath-path" value="$.name"><br>
+    <button onclick="callGet('/json/get/' + v('getpath-key') + '/' + v('getpath-path'), 'getpath-result')">获取</button>
+    <p class="hint">路径示例：$.name、$.price、$.tags、$.attr.color</p>
+    <div class="result" id="getpath-result"></div>
+</div>
+
+<div class="card">
+    <h3>4. 删除 JSON <span class="badge">DELETE /json/del/{key}</span></h3>
+    <label>键 key</label><input id="del-key" value="product:1"><br>
+    <button onclick="callDelete('/json/del/' + v('del-key'), 'del-result')">删除</button>
+    <div class="result" id="del-result"></div>
+</div>
+
+<div class="card">
+    <h3>5. 类型查询 <span class="badge">GET /json/type/{key}/{path}</span></h3>
+    <label>键 key</label><input id="type-key" value="product:1"><br>
+    <label>路径 path</label><input id="type-path" value="$"><br>
+    <button onclick="callGet('/json/type/' + v('type-key') + '/' + v('type-path'), 'type-result')">查询类型</button>
+    <div class="result" id="type-result"></div>
+</div>
+
+<div class="card">
+    <h3>6. 对象字段数 <span class="badge">GET /json/objLen/{key}</span></h3>
+    <label>键 key</label><input id="objlen-key" value="product:1"><br>
+    <button onclick="callGet('/json/objLen/' + v('objlen-key'), 'objlen-result')">查询字段数</button>
+    <div class="result" id="objlen-result"></div>
+</div>
+
+<div class="card">
+    <h3>7. 对象字段名 <span class="badge">GET /json/objKeys/{key}/{path}</span></h3>
+    <label>键 key</label><input id="objkeys-key" value="product:1"><br>
+    <label>路径 path</label><input id="objkeys-path" value="$"><br>
+    <button onclick="callGet('/json/objKeys/' + v('objkeys-key') + '/' + v('objkeys-path'), 'objkeys-result')">查询字段名</button>
+    <div class="result" id="objkeys-result"></div>
+</div>
+
+<div class="card">
+    <h3>8. 字符串长度 <span class="badge">GET /json/strLen/{key}/{path}</span></h3>
+    <label>键 key</label><input id="strlen-key" value="product:1"><br>
+    <label>路径 path</label><input id="strlen-path" value="$.name"><br>
+    <button onclick="callGet('/json/strLen/' + v('strlen-key') + '/' + v('strlen-path'), 'strlen-result')">查询长度</button>
+    <div class="result" id="strlen-result"></div>
+</div>
+
+<div class="card">
+    <h3>9. 数组长度 <span class="badge">GET /json/arrLen/{key}/{path}</span></h3>
+    <label>键 key</label><input id="arrlen-key" value="product:1"><br>
+    <label>路径 path</label><input id="arrlen-path" value="$.tags"><br>
+    <button onclick="callGet('/json/arrLen/' + v('arrlen-key') + '/' + v('arrlen-path'), 'arrlen-result')">查询长度</button>
+    <div class="result" id="arrlen-result"></div>
+</div>
+
+<div class="card">
+    <h3>10. 批量操作 <span class="badge">GET /json/batch</span></h3>
+    <p class="hint">通过 pipeline 批量写入 product:1001、product:1002，并为 product:1001 的 tags 追加"早餐"标签</p>
+    <button onclick="callGet('/json/batch', 'batch-result')">执行批量操作</button>
+    <div class="result" id="batch-result"></div>
+</div>
+
+<script>
+    function v(id) { return document.getElementById(id).value; }
+
+    function callGet(url, resultId) {
+        var el = document.getElementById(resultId);
+        showLoading(el, url);
+        fetch(url)
+            .then(function (resp) {
+                return resp.json().catch(function () {
+                    return { raw: true, status: resp.status, text: '非 JSON 响应' };
+                }).then(function (json) {
+                    return { status: resp.status, json: json };
+                });
+            })
+            .then(function (data) {
+                if (data.status === 200) {
+                    showSuccess(el, data.json);
+                } else {
+                    showError(el, data.status, data.json);
+                }
+            })
+            .catch(function (err) {
+                showError(el, 0, { message: '请求异常: ' + err.message });
+            });
+    }
+
+    function callPost(url, body, resultId) {
+        var el = document.getElementById(resultId);
+        showLoading(el, url);
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: body
+        })
+            .then(function (resp) {
+                return resp.json().catch(function () {
+                    return { raw: true, status: resp.status, text: '非 JSON 响应' };
+                }).then(function (json) {
+                    return { status: resp.status, json: json };
+                });
+            })
+            .then(function (data) {
+                if (data.status === 200) {
+                    showSuccess(el, data.json);
+                } else {
+                    showError(el, data.status, data.json);
+                }
+            })
+            .catch(function (err) {
+                showError(el, 0, { message: '请求异常: ' + err.message });
+            });
+    }
+
+    function callDelete(url, resultId) {
+        var el = document.getElementById(resultId);
+        showLoading(el, url);
+        fetch(url, { method: 'DELETE' })
+            .then(function (resp) {
+                return resp.json().catch(function () {
+                    return { raw: true, status: resp.status, text: '非 JSON 响应' };
+                }).then(function (json) {
+                    return { status: resp.status, json: json };
+                });
+            })
+            .then(function (data) {
+                if (data.status === 200) {
+                    showSuccess(el, data.json);
+                } else {
+                    showError(el, data.status, data.json);
+                }
+            })
+            .catch(function (err) {
+                showError(el, 0, { message: '请求异常: ' + err.message });
+            });
+    }
+
+    function showLoading(el, url) {
+        el.className = 'result loading show';
+        el.innerHTML = '<span class="status-tag">请求中...</span> ' + escapeHtml(url);
+    }
+
+    function showSuccess(el, json) {
+        el.className = 'result success show';
+        var data = json && json.data ? json.data : json;
+        var html = '<span class="status-tag">✓ 成功</span>';
+        if (json && json.message) {
+            html += ' <b>' + escapeHtml(json.message) + '</b>';
+        }
+        html += renderData(data);
+        el.innerHTML = html;
+    }
+
+    function showError(el, status, json) {
+        el.className = 'result error show';
+        var msg = json && (json.message || json.detail) ? (json.message || json.detail) : (json && json.text ? json.text : '未知错误');
+        el.innerHTML = '<span class="status-tag">✗ 失败 (' + status + ')</span> ' + escapeHtml(String(msg));
+    }
+
+    function renderData(data) {
+        if (data === null || data === undefined) return '';
+        if (typeof data === 'object' && !Array.isArray(data)) {
+            var rows = '';
+            for (var key in data) {
+                if (data.hasOwnProperty(key)) {
+                    rows += '<tr><th>' + escapeHtml(key) + '</th><td>' + renderValue(data[key]) + '</td></tr>';
+                }
+            }
+            return '<table>' + rows + '</table>';
+        }
+        return '<div>' + renderValue(data) + '</div>';
+    }
+
+    function renderValue(val) {
+        if (Array.isArray(val)) {
+            return val.map(function (item) { return renderValue(item); }).join(', ');
+        }
+        if (typeof val === 'boolean') {
+            return '<span style="color:' + (val ? '#1b5e20' : '#b71c1c') + ';font-weight:bold">' + val + '</span>';
+        }
+        if (val !== null && typeof val === 'object') {
+            return JSON.stringify(val);
+        }
+        return escapeHtml(String(val));
+    }
+
+    function escapeHtml(str) {
+        return String(str).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/\"/g, '\"');
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: redis-demo
+redis-module:
+  config: |
+    singleServerConfig:
+      address: "redis://127.0.0.1:6379"
+  redisjson:
+    enabled: true
+  redisearch:
+    enabled: true
+  redisbloom:
+    enabled: true

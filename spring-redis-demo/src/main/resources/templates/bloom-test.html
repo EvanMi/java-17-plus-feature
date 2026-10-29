@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Redis Bloom Filter 测试页面</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, Arial, sans-serif; max-width: 960px; margin: 20px auto; padding: 0 20px; background: #f5f6f8; color: #333; }
+        h1 { color: #222; border-bottom: 2px solid #4285f4; padding-bottom: 10px; }
+        .card { border: 1px solid #e0e0e0; border-radius: 10px; padding: 18px; margin-bottom: 18px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .card h3 { margin-top: 0; color: #444; font-size: 16px; }
+        .card h3 .badge { display: inline-block; background: #e8f0fe; color: #4285f4; border-radius: 4px; padding: 1px 8px; font-size: 12px; margin-left: 6px; font-weight: normal; }
+        label { display: inline-block; width: 110px; margin-right: 8px; font-size: 14px; color: #555; }
+        input { padding: 7px; margin-right: 10px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 5px; width: 180px; font-size: 14px; }
+        input:focus { outline: none; border-color: #4285f4; }
+        button { padding: 7px 16px; background: #4285f4; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
+        button:hover { background: #3367d6; }
+        .result { margin-top: 12px; padding: 12px; border-radius: 6px; font-size: 13px; white-space: pre-wrap; word-break: break-all; display: none; }
+        .result.show { display: block; }
+        .result.loading { background: #fff8e1; color: #b28704; border: 1px solid #ffe082; }
+        .result.success { background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7; }
+        .result.error { background: #ffebee; color: #b71c1c; border: 1px solid #ef9a9a; }
+        .result .status-tag { font-weight: bold; }
+        .result table { border-collapse: collapse; margin-top: 8px; background: #fff; }
+        .result table td, .result table th { border: 1px solid #ddd; padding: 6px 12px; font-size: 13px; text-align: left; }
+        .result table th { background: #f0f0f0; }
+        .hint { margin: 10px 0 0; font-size: 12px; color: #888; }
+    </style>
+</head>
+<body>
+<h1>Redis Bloom Filter 测试页面</h1>
+
+<div class="card">
+    <h3>1. 创建过滤器 <span class="badge">create</span></h3>
+    <label>名称 name</label><input id="create-name" value="myFilter"><br>
+    <label>容量 capacity</label><input id="create-capacity" value="10000"><br>
+    <label>误判率 errorRate</label><input id="create-errorRate" value="0.01"><br>
+    <button onclick="callGet('/bloom/create/' + v('create-name') + '/' + v('create-capacity') + '/' + v('create-errorRate'), 'create-result')">创建</button>
+    <div class="result" id="create-result"></div>
+</div>
+
+<div class="card">
+    <h3>2. 添加元素 <span class="badge">add</span></h3>
+    <label>名称 name</label><input id="add-name" value="myFilter"><br>
+    <label>元素 item</label><input id="add-item" value="hello"><br>
+    <button onclick="callGet('/bloom/add/' + v('add-name') + '/' + v('add-item'), 'add-result')">添加</button>
+    <div class="result" id="add-result"></div>
+</div>
+
+<div class="card">
+    <h3>3. 批量添加 <span class="badge">mAdd</span></h3>
+    <label>名称 name</label><input id="madd-name" value="myFilter"><br>
+    <label>元素1 item1</label><input id="madd-item1" value="foo"><br>
+    <label>元素2 item2</label><input id="madd-item2" value="bar"><br>
+    <button onclick="callGet('/bloom/mAdd/' + v('madd-name') + '/' + v('madd-item1') + '/' + v('madd-item2'), 'madd-result')">批量添加</button>
+    <div class="result" id="madd-result"></div>
+</div>
+
+<div class="card">
+    <h3>4. 判断是否存在 <span class="badge">exists</span></h3>
+    <label>名称 name</label><input id="exists-name" value="myFilter"><br>
+    <label>元素 item</label><input id="exists-item" value="hello"><br>
+    <button onclick="callGet('/bloom/exists/' + v('exists-name') + '/' + v('exists-item'), 'exists-result')">判断</button>
+    <div class="result" id="exists-result"></div>
+</div>
+
+<div class="card">
+    <h3>5. 批量判断 <span class="badge">mExists</span></h3>
+    <label>名称 name</label><input id="mexists-name" value="myFilter"><br>
+    <label>元素1 item1</label><input id="mexists-item1" value="foo"><br>
+    <label>元素2 item2</label><input id="mexists-item2" value="bar"><br>
+    <button onclick="callGet('/bloom/mExists/' + v('mexists-name') + '/' + v('mexists-item1') + '/' + v('mexists-item2'), 'mexists-result')">批量判断</button>
+    <div class="result" id="mexists-result"></div>
+</div>
+
+<div class="card">
+    <h3>6. 查看过滤器信息 <span class="badge">info</span></h3>
+    <label>名称 name</label><input id="info-name" value="myFilter"><br>
+    <button onclick="callGet('/bloom/info/' + v('info-name'), 'info-result')">查看信息</button>
+    <div class="result" id="info-result"></div>
+</div>
+
+<div class="card">
+    <h3>7. 插入并创建 <span class="badge">insert</span></h3>
+    <label>名称 name</label><input id="insert-name" value="myFilter2"><br>
+    <label>容量 capacity</label><input id="insert-capacity" value="10000"><br>
+    <label>误判率 errorRate</label><input id="insert-errorRate" value="0.01"><br>
+    <label>元素1 item1</label><input id="insert-item1" value="a"><br>
+    <label>元素2 item2</label><input id="insert-item2" value="b"><br>
+    <button onclick="callGet('/bloom/insert/' + v('insert-name') + '/' + v('insert-capacity') + '/' + v('insert-errorRate') + '/' + v('insert-item1') + '/' + v('insert-item2'), 'insert-result')">插入</button>
+    <div class="result" id="insert-result"></div>
+</div>
+
+<div class="card">
+    <h3>8. 扫描源过滤器 <span class="badge">scan</span></h3>
+    <label>源名称 name</label><input id="scan-name" value="myFilter"><br>
+    <button onclick="callGet('/bloom/scan/' + v('scan-name'), 'scan-result')">扫描源过滤器</button>
+    <div class="result" id="scan-result"></div>
+    <p class="hint">此步骤通过 scanDump 扫描源过滤器并将数据暂存到内存，需配合下方 <b>load</b> 步骤加载到目标过滤器。</p>
+</div>
+
+<div class="card">
+    <h3>9. 加载到目标过滤器 <span class="badge">load</span></h3>
+    <label>目标名称 name</label><input id="load-name" value="myFilterCopy"><br>
+    <button onclick="callGet('/bloom/load/' + v('load-name'), 'load-result')">加载</button>
+    <div class="result" id="load-result"></div>
+    <p class="hint">将上一步 <b>scan</b> 暂存的数据加载到目标过滤器。请先执行 scan，再执行 load。</p>
+</div>
+
+<script>
+    function v(id) { return document.getElementById(id).value; }
+
+    function callGet(url, resultId) {
+        var el = document.getElementById(resultId);
+        showLoading(el, url);
+        fetch(url)
+            .then(function (resp) {
+                return resp.json().catch(function () {
+                    return { raw: true, status: resp.status, text: '非 JSON 响应' };
+                }).then(function (json) {
+                    return { status: resp.status, json: json };
+                });
+            })
+            .then(function (data) {
+                if (data.status === 200) {
+                    showSuccess(el, data.json);
+                } else {
+                    showError(el, data.status, data.json);
+                }
+            })
+            .catch(function (err) {
+                showError(el, 0, { message: '请求异常: ' + err.message });
+            });
+    }
+
+    function showLoading(el, url) {
+        el.className = 'result loading show';
+        el.innerHTML = '<span class="status-tag">请求中...</span> ' + escapeHtml(url);
+    }
+
+    function showSuccess(el, json) {
+        el.className = 'result success show';
+        var data = json && json.data ? json.data : json;
+        var html = '<span class="status-tag">✓ 成功</span>';
+        if (json && json.message) {
+            html += ' <b>' + escapeHtml(json.message) + '</b>';
+        }
+        html += renderData(data);
+        el.innerHTML = html;
+    }
+
+    function showError(el, status, json) {
+        el.className = 'result error show';
+        var msg = json && (json.message || json.detail) ? (json.message || json.detail) : (json && json.text ? json.text : '未知错误');
+        el.innerHTML = '<span class="status-tag">✗ 失败 (' + status + ')</span> ' + escapeHtml(String(msg));
+    }
+
+    function renderData(data) {
+        if (data === null || data === undefined) return '';
+        if (typeof data === 'object' && !Array.isArray(data)) {
+            var rows = '';
+            for (var key in data) {
+                if (data.hasOwnProperty(key)) {
+                    rows += '<tr><th>' + escapeHtml(key) + '</th><td>' + renderValue(data[key]) + '</td></tr>';
+                }
+            }
+            return '<table>' + rows + '</table>';
+        }
+        return '<div>' + renderValue(data) + '</div>';
+    }
+
+    function renderValue(val) {
+        if (Array.isArray(val)) {
+            return val.map(function (item) { return renderValue(item); }).join(', ');
+        }
+        if (typeof val === 'boolean') {
+            return '<span style="color:' + (val ? '#1b5e20' : '#b71c1c') + ';font-weight:bold">' + val + '</span>';
+        }
+        if (val !== null && typeof val === 'object') {
+            return JSON.stringify(val);
+        }
+        return escapeHtml(String(val));
+    }
+
+    function escapeHtml(str) {
+        return String(str).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"');
+    }
+</script>
+</body>
+</html>
