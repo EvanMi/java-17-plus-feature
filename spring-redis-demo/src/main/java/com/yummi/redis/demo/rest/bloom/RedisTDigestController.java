@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.AbstractMap;
 import java.util.List;
 
+///> **不存全部原始数据，用少量质心近似分布；两头（p0/p100 附近）质心小而密，中间（中位数附近）质心大而稀疏，刚好匹配监控最关心的尾延迟**
 @RestController
 @RequestMapping("/tdigest")
 public class RedisTDigestController {

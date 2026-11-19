@@ -11,3 +11,5 @@ redis-module:
     enabled: true
   redisbloom:
     enabled: true
+  redistimeseries:
+    enabled: true

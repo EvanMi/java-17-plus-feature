@@ -53,7 +53,8 @@ public class RedisTopKController {
     @GetMapping("/incrby/{name}/{item1}/{value1}/{item2}/{value2}")
     public Map<String, Object> incrby(@PathVariable("name") String name, @PathVariable("item1") String item1, @PathVariable("value1") Integer value1,
                                       @PathVariable("item2") String item2, @PathVariable("value2") Integer value2) {
-        List<String> kickedItems = redisBloomClient.getTopKFilter(name).incrby(Map.of(item1, value1, item2, value2));
+        List<String> kickedItems = redisBloomClient.getTopKFilter(name)
+                .incrby(Map.of(item1, value1, item2, value2));
         return success("批量累加计数完成", Map.of(
                 "name", name,
                 "increments", Map.of(item1, value1, item2, value2),
@@ -63,7 +64,8 @@ public class RedisTopKController {
     /// 6. 批量查询元素是否在 TopK 中
     @GetMapping("/query/{name}/{item1}/{item2}")
     public Map<String, Object> query(@PathVariable("name") String name, @PathVariable("item1") String item1, @PathVariable("item2") String item2) {
-        List<Boolean> results = redisBloomClient.getTopKFilter(name).query(item1, item2);
+        List<Boolean> results = redisBloomClient.getTopKFilter(name)
+                .query(item1, item2);
         return success("查询完成", Map.of(
                 "name", name,
                 "items", List.of(item1, item2),

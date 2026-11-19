@@ -78,7 +78,7 @@ public class RedisCmsController {
                                      @PathVariable("name2") String name2,
                                      @PathVariable("name3") String name3) {
         boolean merged = redisBloomClient.getCountMinSketch(name3)
-                .merge(new String[]{name1}, new int [] {});
+                .merge(new String[]{name1, name2}, new Integer[] {1, 1});
         return success("合并完成", Map.of(
                 "target", name3,
                 "sources", List.of(name1, name2),

@@ -35,4 +35,14 @@ public class PageController {
     public String jsonTestPage() {
         return "json-test";
     }
+
+    @GetMapping("/search-test")
+    public String searchTestPage() {
+        return "search-test";
+    }
+
+    @GetMapping("/timeseries-test")
+    public String timeseriesTestPage() {
+        return "timeseries-test";
+    }
 }
